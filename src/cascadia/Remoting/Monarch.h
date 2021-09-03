@@ -70,6 +70,45 @@ namespace winrt::Microsoft::Terminal::Remoting::implementation
         std::unordered_map<uint64_t, winrt::Microsoft::Terminal::Remoting::IPeasant> _peasants;
 
         std::vector<Remoting::WindowActivatedArgs> _mruPeasants;
+        
+        template<typename F>
+        void _forEachPeasant(F&& func)
+        {
+            using Map = decltype(_peasants);
+            using R = std::invoke_result_t<F, Map::key_type, Map::mapped_type>;
+            static constexpr auto IsVoid = std::is_void_v<R>;
+
+            std::vector<uint64_t> peasantsToErase;
+
+            for (const auto& [id, p] : _peasants)
+            {
+                try
+                {
+                    if constexpr (IsVoid)
+                    {
+                        func(id, p);
+                    }
+                    else
+                    {
+                        if (!func(id, p))
+                        {
+                            break;
+                        }
+                    }
+                }
+                catch (...)
+                {
+                    LOG_CAUGHT_EXCEPTION();
+                    peasantsToErase.emplace_back(id);
+                }
+            }
+
+            for (const auto& id : peasantsToErase)
+            {
+                _peasants.erase(id);
+                _clearOldMruEntries(id);
+            }
+        }
 
         winrt::Microsoft::Terminal::Remoting::IPeasant _getPeasant(uint64_t peasantID);
         uint64_t _getMostRecentPeasantID(bool limitToCurrentDesktop, const bool ignoreQuakeWindow);
